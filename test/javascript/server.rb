@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'bundler'
 Bundler.setup
 require 'sinatra'
@@ -28,26 +30,21 @@ end
 use AssetPath, urls: ['/vendor/assets/javascripts'], root: File.expand_path('../..', settings.root)
 use AssetPath, urls: ['/vendor/assets/javascripts'], root: File.expand_path('../', $LOAD_PATH.find { |p| p =~ /jquery-rails/ })
 
-JQUERY_VERSIONS = %w(1.11.3 1.12.4 2.0.3 2.1.4 2.2.4 3.0.0 3.1.1).freeze
+DEFAULT_JQUERY_VERSION = '3.1.1'.freeze
+QUNIT_VERSION          = '2.1.1'.freeze
 
 helpers do
-  def jquery_link(version)
-    if params[:version] == version
-      "[#{version}]"
-    else
-      "<a href='/?version=#{version}'>#{version}</a>"
-    end
+  def jquery_version
+    params[:jquery] || DEFAULT_JQUERY_VERSION
   end
 
-  def jquery_src
-    if params[:version] == 'edge' then '/vendor/jquery.js'
-    else "https://code.jquery.com/jquery-#{params[:version]}.js"
-    end
+  def qunit_version
+    QUNIT_VERSION
   end
 
-  def test_base
-    names = ['/vendor/qunit.js', 'settings']
-    names.map { |name| script_tag name }.join("\n")
+  def script_tag(src)
+    src = "/test/#{src}.js" unless src.index('/')
+    %(<script src='#{src}' type='text/javascript'></script>)
   end
 
   def test(*types)
@@ -57,47 +54,10 @@ helpers do
       end.join("\n")
     end.join("\n")
   end
-
-  def script_tag(src)
-    src = "/test/#{src}.js" unless src.index('/')
-    %(<script src='#{src}' type='text/javascript'></script>)
-  end
-
-  def jquery_versions
-    JQUERY_VERSIONS
-  end
 end
 
 get '/' do
-  params[:version] ||= JQUERY_VERSIONS.last
   erb :index
-end
-
-get '/validators/uniqueness' do
-  content_type 'application/json'
-
-  if params[:user2]
-    status 500
-    'error'
-  elsif params['active_record_test_module/user2']
-    status 200
-    'false'
-  elsif params[:scope]
-    scope = params[:scope]
-    if scope[:name] == 'test name' || scope[:name] == 'taken name'
-      status 200
-      'false'
-    else
-      status 404
-      'true'
-    end
-  elsif params[:case_sensitive] == 'false' && (params[:user][:email] || params[:users][:email]) == 'taken@test.com'
-    status 200
-    'false'
-  else
-    status 404
-    'true'
-  end
 end
 
 post '/users' do

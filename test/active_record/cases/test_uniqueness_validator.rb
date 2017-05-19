@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'active_record/cases/test_base'
 
 module ActiveRecord
@@ -36,7 +38,7 @@ module ActiveRecord
       @user.stubs(:age).returns(30)
       @user.stubs(:title).returns('test title')
       expected_hash = { message: 'has already been taken', case_sensitive: true, scope: { age: 30, title: 'test title' } }
-      result_hash = UniquenessValidator.new(attributes: [:name], scope: [:age, :title]).client_side_hash(@user, :name)
+      result_hash = UniquenessValidator.new(attributes: [:name], scope: %i[age title]).client_side_hash(@user, :name)
       assert_equal expected_hash, result_hash
     end
 
@@ -56,12 +58,6 @@ module ActiveRecord
       @user = UserForm.new
       expected_hash = { message: 'has already been taken', case_sensitive: true, class: 'user' }
       assert_equal expected_hash, UniquenessValidator.new(attributes: [:name], client_validations: { class: 'User' }).client_side_hash(@user, :name)
-    end
-
-    def test_uniqueness_when_validator_is_disabled_and_force_is_not_nil
-      @user = User.new
-      expected_hash = {}
-      assert_equal expected_hash, @user.client_side_validation_hash(name: nil)
     end
   end
 end

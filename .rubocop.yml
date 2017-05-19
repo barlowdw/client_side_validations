@@ -1,10 +1,12 @@
 AllCops:
+  DisplayCopNames: true
+  TargetRailsVersion: 5.0
+  TargetRubyVersion: 2.2
   Exclude:
     - 'vendor/bundle/**/*'
-  TargetRubyVersion: 2.2
 
 Metrics/AbcSize:
-  Max: 41.39 # TODO: Lower to 15
+  Max: 18.36
 
 Metrics/BlockLength:
   Exclude:
@@ -17,13 +19,15 @@ Metrics/ClassLength:
     - 'test/**/*'
 
 Metrics/CyclomaticComplexity:
-  Max: 11
+  Max: 7
+  Exclude:
+    - 'test/**/*'
 
 Metrics/LineLength:
   Enabled: false
 
 Metrics/MethodLength:
-  Max: 25
+  Max: 18
   Exclude:
     - 'test/**/*'
 
@@ -35,7 +39,8 @@ Metrics/ParameterLists:
   Max: 8
 
 Metrics/PerceivedComplexity:
-  Max: 12 # TODO: Lower to 7
+  Exclude:
+    - 'test/**/*'
 
 Rails:
   Enabled: true
@@ -45,6 +50,15 @@ Style/ClassVars:
 
 Style/Documentation:
   Enabled: false
+
+Style/FileName:
+  Exclude:
+    - Appraisals
+
+# TODO: Remove when targeting Ruby 2.3 because it is already enabled.
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  EnforcedStyle: always
 
 Style/SpaceAroundOperators:
   AllowForAlignment: true

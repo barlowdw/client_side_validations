@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module ClientSideValidations
   module ActionView
     module Helpers
@@ -7,54 +8,31 @@ module ClientSideValidations
         end
 
         def form_for(record, options = {}, &block)
+          return super unless options[:validate]
+
+          # We are not going to use super here, because we need
+          # to inject the csv options in a data attribute in a clean way.
+          # So we basically reimplement the whole form_for method
           raise ArgumentError, 'Missing block' unless block_given?
-          if options[:validate]
+          html_options = options[:html] ||= {}
 
-            # Always turn off HTML5 Validations
-            options[:html] ||= {}
-            options[:html][:novalidate] = 'novalidate'
-
-            case record
-            when String, Symbol
-              raise ClientSideValidations::ActionView::Helpers::FormHelper::Error, 'Using form_for(:name, @resource) is not supported with ClientSideValidations. Please use form_for(@resource, as: :name) instead.'
-            else
-              object = record.is_a?(Array) ? record.last : record
-              object_name = options[:as] || model_name_from_record_or_class(object).param_key
-            end
-          end
+          # Moving the switch statement to another method to
+          # lower complexity
+          object, object_name = check_record(record, options)
 
           @validators = {}
 
-          # Order matters here. Rails mutates the options object
-          html_id = options[:html][:id] if options[:html]
-          form = super(record, options, &block)
-          options[:id] = html_id if html_id
+          apply_html_options! options, html_options
 
-          build_bound_validators options
-          builder = instantiate_builder(object_name, object, options) if object_name && object
-          script = client_side_form_settings(object, options, builder)
+          builder = instantiate_builder(object_name, object, options)
+          output  = capture(builder, &block)
+          html_options[:multipart] ||= builder.multipart?
 
-          # Because of the load order requirement above this sub is necessary
-          # Would be nice to not do this
-          script = insert_validators_into_script(script)
+          build_bound_validators! options
 
-          # rubocop:disable OutputSafety
-          # TODO: check if html_safe is really needed here
-          if assign_script_to_content_for(options[:validate], script)
-            form.html_safe
-          else
-            "#{form}#{script}".html_safe
-          end
-          # rubocop:enable OutputSafety
-        end
-
-        def assign_script_to_content_for(name, script)
-          # rubocop:disable OutputSafety
-          # TODO: check if html_safe is really needed here
-          return unless name && name != true
-          content_for name, script.html_safe
-          true
-          # rubocop:enable OutputSafety
+          apply_csv_html_options! html_options, options, builder
+          html_options = html_options_for_form(options[:url] || {}, html_options)
+          form_tag_with_body(html_options, output)
         end
 
         def apply_form_for_options!(record, object, options)
@@ -62,16 +40,34 @@ module ClientSideValidations
           options[:html][:validate] = true if options[:validate]
         end
 
-        def fields_for(record_or_name_or_array, record_object = nil, options = {}, &block)
+        def fields_for(record_name, record_object = nil, options = {}, &block)
+          # Order matters here. Rails mutates the `options` object
           output = super
-          build_bound_validators options
+
+          build_bound_validators! options
+
           output
         end
 
         private
 
-        def build_bound_validators(options)
+        def check_record(record, options)
+          case record
+          when String, Symbol
+            raise ClientSideValidations::ActionView::Helpers::FormHelper::Error, 'Using form_for(:name, @resource) is not supported with ClientSideValidations. Please use form_for(@resource, as: :name) instead.'
+          else
+            object = record.is_a?(Array) ? record.last : record
+            raise ArgumentError, 'First argument in form cannot contain nil or be empty' unless object
+            object_name = options[:as] || model_name_from_record_or_class(object).param_key
+            apply_form_for_options!(record, object, options)
+          end
+
+          [object, object_name]
+        end
+
+        def build_bound_validators!(options)
           return unless @validators
+
           options[:validators].each do |key, value|
             if @validators.key?(key)
               @validators[key].merge! value
@@ -81,59 +77,52 @@ module ClientSideValidations
           end
         end
 
-        def insert_validators_into_script(script)
-          # There is probably a more performant way of doing this
-          # But using String#sub has some issues. Undocumented "features"
-          if script
-            script = script.split(/"validator_hash"/)
-            script = "#{script[0]}#{construct_validators.to_json}#{script[1]}"
-          end
-
-          script
-        end
-
         def construct_validators
           @validators.each_with_object({}) do |object_opts, validator_hash|
+            next unless object_opts[0].respond_to?(:client_side_validation_hash)
+
             option_hash = object_opts[1].each_with_object({}) do |attr, result|
               result[attr[0]] = attr[1][:options]
             end
 
-            validation_hash =
-              if object_opts[0].respond_to?(:client_side_validation_hash)
-                object_opts[0].client_side_validation_hash(option_hash)
-              else
-                {}
-              end
+            validation_hash = object_opts[0].client_side_validation_hash(option_hash)
 
             option_hash.each_key do |attr|
-              if validation_hash[attr]
-                validator_hash.merge!(object_opts[1][attr][:name] => validation_hash[attr])
-              end
+              next unless validation_hash.key?(attr)
+              validator_hash[object_opts[1][attr][:name]] = validation_hash[attr]
             end
           end
         end
 
-        def client_side_form_settings(object, options, builder)
-          return unless options[:validate]
-          var_name =
-            if options[:id]
-              options[:id]
-            elsif object.respond_to?(:persisted?) && object.persisted?
-              options[:as] ? "edit_#{options[:as]}" : [options[:namespace], dom_id(object, :edit)].compact.join('_'.freeze)
-            else
-              options[:as] ? "new_#{options[:as]}" : [options[:namespace], dom_id(object)].compact.join('_'.freeze)
-            end
+        def number_format
+          if ClientSideValidations::Config.number_format_with_locale && defined?(I18n)
+            I18n.t('number.format').slice :separator, :delimiter
+          else
+            { separator: '.', delimiter: ',' }
+          end
+        end
 
-          number_format =
-            if ClientSideValidations::Config.number_format_with_locale && defined?(I18n)
-              I18n.t('number.format').slice(:separator, :delimiter)
-            else
-              { separator: '.', delimiter: ',' }
-            end
+        def apply_html_options!(options, html_options)
+          # Turn off HTML5 validations
+          html_options[:novalidate] = 'novalidate'
 
-          patterns = { numericality: "/^(-|\\+)?(?:\\d+|\\d{1,3}(?:\\#{number_format[:delimiter]}\\d{3})+)(?:\\#{number_format[:separator]}\\d*)?$/" }
+          html_options[:data]   = options.delete(:data)   if options.key?(:data)
+          html_options[:remote] = options.delete(:remote) if options.key?(:remote)
+          html_options[:method] = options.delete(:method) if options.key?(:method)
+          html_options[:enforce_utf8] = options.delete(:enforce_utf8) if options.key?(:enforce_utf8)
+          html_options[:authenticity_token] = options.delete(:authenticity_token)
+        end
 
-          javascript_tag "if(window.ClientSideValidations===undefined)window.ClientSideValidations={};window.ClientSideValidations.disabled_validators=#{ClientSideValidations::Config.disabled_validators.to_json};window.ClientSideValidations.number_format=#{number_format.to_json};if(window.ClientSideValidations.patterns===undefined)window.ClientSideValidations.patterns = {};window.ClientSideValidations.patterns.numericality=#{patterns[:numericality]};#{"if(window.ClientSideValidations.remote_validators_prefix===undefined)window.ClientSideValidations.remote_validators_prefix='#{ClientSideValidations::Config.root_path.sub(%r{/+\Z}, '')}';" if ClientSideValidations::Config.root_path.present?}if(window.ClientSideValidations.forms===undefined)window.ClientSideValidations.forms={};window.ClientSideValidations.forms['#{var_name}'] = #{builder.client_side_form_settings(options, self).merge(validators: 'validator_hash').to_json};"
+        def apply_csv_html_options!(html_options, options, builder)
+          html_options.delete :validate
+
+          csv_options = {
+            html_settings: builder.client_side_form_settings(options, self),
+            number_format: number_format,
+            validators: construct_validators
+          }
+
+          html_options['data-client-side-validations'] = csv_options.to_json
         end
       end
     end

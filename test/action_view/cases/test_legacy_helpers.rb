@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'action_view/cases/helper'
 
 module ClientSideValidations
@@ -27,7 +29,7 @@ module ClientSideValidations
     end
 
     def test_file_field
-      form_for(@post, html: { multipart: true }) do |f|
+      form_for(@post) do |f|
         concat f.file_field(:cost)
       end
 

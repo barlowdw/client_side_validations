@@ -1,9 +1,11 @@
 QUnit.module('Form Validate Before Callback', {
   beforeEach: function() {
-    ClientSideValidations.forms['new_user'] = {
-      type: 'ActionView::Helpers::FormBuilder',
-      input_tag: '<div class="field_with_errors"><span id="input_tag" /><label for="user_name" class="message"></label></div>',
-      label_tag: '<div class="field_with_errors"><label id="label_tag" /></div>',
+    dataCsv = {
+      html_settings: {
+        type: 'ActionView::Helpers::FormBuilder',
+        input_tag: '<div class="field_with_errors"><span id="input_tag" /><label for="user_name" class="message"></label></div>',
+        label_tag: '<div class="field_with_errors"><label id="label_tag" /></div>'
+      },
       validators: {"user[name]":{"presence":[{"message": "must be present"}]}}
     }
 
@@ -11,7 +13,7 @@ QUnit.module('Form Validate Before Callback', {
       .append($('<span id="result" />'))
       .append($('<form />', {
         action: '/users',
-        'data-validate': true,
+        'data-client-side-validations': JSON.stringify(dataCsv),
         method: 'post',
         id: 'new_user'
       }))
@@ -34,7 +36,7 @@ QUnit.module('Form Validate Before Callback', {
 });
 
 QUnit.test('runs callback', function(assert) {
-  var form = $('form'), input = form.find('input');
+  var form = $('#new_user'), input = form.find('input');
 
   assert.equal($('#result').text(), '');
 

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Configure Rails Environment
 ENV['RAILS_ENV'] = 'test'
 
@@ -8,7 +10,7 @@ end
 
 require 'simplecov'
 SimpleCov.start 'rails' do
-  add_filter %w(version.rb initializer.rb)
+  add_filter %w[version.rb initializer.rb]
 end
 
 require 'rubygems'

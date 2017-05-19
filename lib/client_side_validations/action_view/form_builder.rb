@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 module ClientSideValidations
   module ActionView
     module Helpers
       module FormBuilder
         def self.prepended(base)
-          (base.field_helpers.map(&:to_s) - %w(apply_form_for_options! label check_box radio_button fields_for hidden_field)).each do |selector|
+          (base.field_helpers - %i[label check_box radio_button fields_for hidden_field file_field]).each do |selector|
             base.class_eval <<-RUBY_EVAL
               def #{selector}(method, options = {})
                 build_validation_options(method, options)
@@ -70,7 +72,7 @@ module ClientSideValidations
           super(method, collection, value_method, text_method, options, html_options)
         end
 
-        %i(collection_check_boxes collection_radio_buttons).each do |method_name|
+        %i[collection_check_boxes collection_radio_buttons].each do |method_name|
           define_method method_name do |method, collection, value_method, text_method, options = {}, html_options = {}, &block|
             build_validation_options(method, html_options.merge(name: options[:name]))
             html_options.delete(:validate)
@@ -88,6 +90,12 @@ module ClientSideValidations
           build_validation_options(method, html_options.merge(name: options[:name]))
           html_options.delete(:validate)
           super(method, priority_zones, options, html_options)
+        end
+
+        def file_field(method, options = {})
+          build_validation_options(method, options)
+          options.delete(:validate)
+          super(method, options)
         end
 
         private

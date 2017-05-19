@@ -1,4 +1,7 @@
+# frozen_string_literal: true
+
 require 'client_side_validations/core_ext'
+require 'client_side_validations/extender'
 require 'client_side_validations/active_model/conditionals'
 
 module ClientSideValidations
@@ -9,13 +12,13 @@ module ClientSideValidations
       end
 
       def copy_conditional_attributes(to, from)
-        [:if, :unless].each { |key| to[key] = from[key] if from[key].present? }
+        %i[if unless].each { |key| to[key] = from[key] if from[key].present? }
       end
 
       private
 
       def build_client_side_hash(model, attribute, options)
-        { message: model.errors.generate_message(attribute, message_type, options) }.merge(options.except(*::ActiveModel::Errors::CALLBACKS_OPTIONS - [:allow_blank, :if, :unless]))
+        { message: model.errors.generate_message(attribute, message_type, options) }.merge(options.except(*::ActiveModel::Errors::CALLBACKS_OPTIONS - %i[allow_blank if unless]))
       end
 
       def message_type
@@ -28,16 +31,9 @@ module ClientSideValidations
 
       def client_side_validation_hash(force = nil)
         _validators.inject({}) do |attr_hash, attr|
-          return attr_hash if [nil, :block].include?(attr[0])
+          next attr_hash if [nil, :block].include?(attr[0])
 
-          validator_hash = attr[1].each_with_object(Hash.new { |h, k| h[k] = [] }) do |validator, kind_hash|
-            next unless can_use_for_client_side_validation?(attr[0], validator, force)
-
-            client_side_hash = validator.client_side_hash(self, attr[0], extract_force_option(attr[0], force))
-            if client_side_hash
-              kind_hash[validator.kind] << client_side_hash.except(:on, :if, :unless)
-            end
-          end
+          validator_hash = validator_hash_for(attr, force)
 
           if validator_hash.present?
             attr_hash.merge!(attr[0] => validator_hash)
@@ -48,6 +44,17 @@ module ClientSideValidations
       end
 
       private
+
+      def validator_hash_for(attr, force)
+        attr[1].each_with_object(Hash.new { |h, k| h[k] = [] }) do |validator, kind_hash|
+          next unless can_use_for_client_side_validation?(attr[0], validator, force)
+
+          client_side_hash = validator.client_side_hash(self, attr[0], extract_force_option(attr[0], force))
+          if client_side_hash
+            kind_hash[validator.kind] << client_side_hash.except(:on, :if, :unless)
+          end
+        end
+      end
 
       def extract_force_option(attr, force)
         case force
@@ -61,22 +68,32 @@ module ClientSideValidations
       def can_use_for_client_side_validation?(attr, validator, force)
         return false if validator_turned_off?(attr, validator, force)
 
-        # Yeah yeah, #new_record? is not part of ActiveModel :p
-        result = ((respond_to?(:new_record?) && validator.options[:on] == (new_record? ? :create : :update)) || validator.options[:on].nil?)
+        result = check_new_record(validator)
         result &&= validator.kind != :block
 
         if validator.options[:if] || validator.options[:unless]
-          if validator.options[:if] && validator.options[:if] =~ /changed\?/
-            result = true
-          else
-            result = can_force_validator?(attr, validator, force)
-            if validator.options[:if]
-              result &&= run_conditionals(validator.options[:if], :if)
-            end
-            if validator.options[:unless]
-              result &&= run_conditionals(validator.options[:unless], :unless)
-            end
-          end
+          check_conditionals attr, validator, force
+        else
+          result
+        end
+      end
+
+      # Yeah yeah, #new_record? is not part of ActiveModel :p
+      def check_new_record(validator)
+        (respond_to?(:new_record?) && validator.options[:on] == (new_record? ? :create : :update)) || validator.options[:on].nil?
+      end
+
+      def check_conditionals(attr, validator, force)
+        return true if validator.options[:if] && validator.options[:if] =~ /changed\?/
+
+        result = can_force_validator?(attr, validator, force)
+
+        if validator.options[:if]
+          result &&= run_conditionals(validator.options[:if], :if)
+        end
+
+        if validator.options[:unless]
+          result &&= run_conditionals(validator.options[:unless], :unless)
         end
 
         result
@@ -145,7 +162,4 @@ end
 ActiveModel::Validator.send(:include, ClientSideValidations::ActiveModel::Validator)
 ActiveModel::Validations.send(:include, ClientSideValidations::ActiveModel::Validations)
 
-%w(Absence Acceptance Exclusion Format Inclusion Length Numericality Presence).each do |validator|
-  require "client_side_validations/active_model/#{validator.downcase}"
-  ActiveModel::Validations.const_get("#{validator}Validator").send :include, ClientSideValidations::ActiveModel.const_get(validator)
-end
+ClientSideValidations::Extender.extend 'ActiveModel', %w[Absence Acceptance Exclusion Format Inclusion Length Numericality Presence]

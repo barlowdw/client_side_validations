@@ -1,4 +1,4 @@
-# coding: utf-8
+# frozen_string_literal: true
 
 require 'action_view/cases/helper'
 
@@ -42,7 +42,7 @@ module ClientSideValidations
     end
 
     def test_file_field
-      form_for(@post, validate: true, html: { multipart: true }) do |f|
+      form_for(@post, validate: true) do |f|
         concat f.file_field(:cost)
       end
 
@@ -467,19 +467,6 @@ module ClientSideValidations
       assert_dom_equal expected, output_buffer
     end
 
-    def test_pushing_script_to_content_for
-      form_for(@post, validate: :post) do |f|
-        concat f.text_field(:cost)
-      end
-
-      validators = { 'post[cost]' => { presence: [{ message: "can't be blank" }] } }
-      expected = whole_form('/posts', 'new_post', 'new_post', no_validate: true) do
-        form_field('input', 'post_cost', 'post[cost]', 'text')
-      end
-      assert_dom_equal expected, output_buffer
-      assert_equal build_script_tag(nil, 'new_post', validators), content_for(:post)
-    end
-
     def test_text_area
       form_for(@post, validate: true) do |f|
         concat f.text_area(:cost)
@@ -636,7 +623,7 @@ module ClientSideValidations
       validators = { 'post[cost]' => { presence: [{ message: "can't be blank" }] } }
       expected = whole_form('/posts', 'new_post', 'new_post', validators: validators) do
         form_field('input', 'post_cost', 'post[cost]', 'text')
-      end.gsub('{"separator":".","delimiter":","}', '{"separator":",","delimiter":"."}').gsub('(?:\\,\\d{3})+)(?:\\.\\d*)', '(?:\\.\\d{3})+)(?:\\,\\d*)')
+      end.gsub(CGI.escapeHTML('{"separator":".","delimiter":","}'), CGI.escapeHTML('{"separator":",","delimiter":"."}'))
 
       assert_dom_equal expected, output_buffer
     end

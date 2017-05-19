@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 require 'active_model/cases/helper'
 
 module ClientSideValidations
-  class ActiveModelTestBase < ::ActiveModel::TestCase
+  class ActiveModelTestBase < ::ActiveSupport::TestCase
     include ::ActiveModel::Validations
 
     def setup

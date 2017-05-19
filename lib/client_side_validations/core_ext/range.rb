@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Range
   def as_json(*)
     [first, last]

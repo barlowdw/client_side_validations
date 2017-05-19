@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'bundler'
 require File.join(File.expand_path('..', __FILE__), 'coffeescript/processor')
 Bundler::GemHelper.install_tasks
@@ -40,16 +42,14 @@ namespace :test do
   end
 end
 
-desc %(Regenerate and commit JavaScript file)
+desc %(Regenerate JavaScript file)
 task :regenerate_javascript do
   regenerate_javascript
 end
 
-Rake::Task[:build].instance_eval { @actions.clear }
-task :build do
-  regenerate_javascript
+desc %(Commit JavaScript file)
+task :commit_javascript do
   perform_git_commit
-  Bundler::GemHelper.new(Dir.pwd).build_gem
 end
 
 def perform_git_commit
@@ -69,7 +69,8 @@ def regenerate_javascript
   puts 'Regenerated JavaScript'
 end
 
-def sh_with_code(cmd, &block)
+def sh_with_code(frozen_cmd, &block)
+  cmd = frozen_cmd.dup
   cmd << ' 2>&1'
   outbuf = ''
   Bundler.ui.debug(cmd)
@@ -90,7 +91,7 @@ def browse_cmd(url)
   browser = ENV['BROWSER'] ||
             (RbConfig::CONFIG['host_os'].include?('darwin') && 'open') ||
             (RbConfig::CONFIG['host_os'] =~ /msdos|mswin|djgpp|mingw|windows/ && 'start') ||
-            %w(xdg-open x-www-browser firefox opera mozilla netscape).find { |comm| which comm }
+            %w[xdg-open x-www-browser firefox opera mozilla netscape].find { |comm| which comm }
 
   abort('ERROR: no web browser detected') unless browser
   Array(browser) << url
@@ -107,3 +108,6 @@ def which(cmd)
   end
   nil
 end
+
+task(:build).prerequisites.unshift task(:commit_javascript)
+task(:build).prerequisites.unshift task(:regenerate_javascript)
